@@ -2,7 +2,7 @@
 
 ## 📋 Overview
 
-A Python application that uses text commands (via a minimal UI) to control the desktop through an LLM-powered visual understanding system with progressive grid-based click refinement.
+A Python application that uses text commands (via a minimal UI) to control the desktop through an LLM-powered visual understanding system with progressive grid-based click refinement. **Current implementation supports left-click only**; see "Future Plans" section for additional action types.
 
 ---
 
@@ -238,6 +238,10 @@ J │     │     │     │     │     │     │     │     │     │   
     └─────┴─────┘
 ```
 
+**Elements Spanning Multiple Cells**:
+- If a UI element spans multiple grid cells, the LLM should select the cell containing the center of the element
+- The click will be executed at the center of the selected cell
+
 ---
 
 ### Module 5: `modules/llm_client.py`
@@ -261,20 +265,30 @@ J │     │     │     │     │     │     │     │     │     │   
 - Parameters: temperature=0.0, max_tokens=256
 - No API call budget or throttling limits
 
+**Multiple Matching Elements Handling**:
+- When multiple matching elements exist (e.g., multiple "submit" buttons), the LLM uses visual context and the user's command to determine the most appropriate target
+- The LLM considers element position, size, surrounding context, and command intent to make the selection
+
+**Ambiguous Commands Handling**:
+- The LLM prompt is designed to handle vague or ambiguous commands intelligently
+- The LLM uses visual context from screenshots to interpret user intent and determine appropriate actions
+- Commands like "do the thing" or "fix it" will be interpreted based on the current screen state and context
+
 ---
 
 ### Module 6: `modules/action_executor.py`
 
-**Purpose**: Execute mouse and keyboard actions
+**Purpose**: Execute mouse actions (left-click only)
 
 **Key Functions**:
 | Function | Description |
 |----------|-------------|
-| `click_at(x, y)` | Perform mouse click at coordinates |
-| `double_click_at(x, y)` | Double-click at coordinates |
-| `type_text(text)` | Type text using keyboard |
-| `press_key(key)` | Press special keys (Enter, Escape, etc.) |
-| `scroll(direction, amount)` | Scroll up/down |
+| `click_at(x, y)` | Perform left mouse click at coordinates |
+
+**Timing Between Actions**:
+- After each click action, the system waits 1 second before capturing the next screenshot
+- This delay allows UI updates, dialogs, popups, and modals to appear and be captured in the subsequent screenshot
+- The 1 second timeout is sufficient for most UI state changes to be visible
 
 ---
 
@@ -328,12 +342,15 @@ final_screenshot.png        # Final state with red click marker
 
 **Implementation Approach**:
 - On new command: generate timestamp (YYYY-MM-DD_HH-MM-SS format) and create folder
+- Each text command starts a new "run" with a unique timestamped folder
+- Multiple LLM prompts can be executed within a single run
 - Maintain a step counter that increments with each action in the loop
 - Save screenshots as PNG files with step-prefixed filenames
 - Save prompts as plain text files for readability
 - Save LLM responses as formatted JSON files
 - For final screenshot: draw a red circle outline with a filled red dot at the center marking the click coordinates
 - Use Pillow's ImageDraw to render the click marker on a copy of the screenshot
+- **No limit on logging**: All execution artifacts are saved regardless of run length or size
 
 ---
 
@@ -504,14 +521,14 @@ USER COMMAND: "{user_command}"
 Based on the current screen state, determine the SINGLE next action needed.
 
 Respond in JSON format:
-- If an action is needed: {"action": "<description of click/type action>"}
+- If an action is needed: {"action": "<description of click action>"}
 - If task is complete: {"action": "COMPLETE"}
 - If task cannot be done: {"action": "ERROR", "reason": "<explanation>"}
 
 Examples:
 - {"action": "Click on the Chrome icon in the dock"}
 - {"action": "Click on the search bar"}
-- {"action": "Type 'Wikipedia' in the search field"}
+- {"action": "Click on the submit button"}
 - {"action": "COMPLETE"}
 ```
 
@@ -588,6 +605,9 @@ Respond ONLY with JSON: {"X": "<1 or 2>", "Y": "<A or B>"}
 | Action loop > 20 iterations | Force ERROR state; prevent infinite loops |
 | Screenshot capture failure | Retry once; then abort with error message |
 | User clicked Stop | Immediately abort action loop; log partial execution; re-enable UI |
+| Repeated failures / Wrong selections | Action loop continues with new screenshots; if loop exceeds 20 iterations, force ERROR state to prevent infinite loops |
+| Application crashes / Unresponsive apps | Screenshot will capture the crashed state; LLM will analyze and return ERROR response with appropriate reason |
+| Unexpected dialogs / Popups / Modals | 1 second wait after each action ensures dialogs are captured in next screenshot; LLM will detect and handle them in subsequent iteration |
 
 ---
 
@@ -625,9 +645,8 @@ Respond ONLY with JSON: {"X": "<1 or 2>", "Y": "<A or B>"}
 - [ ] Test grid accuracy
 
 ### Phase 6: Action Execution (Days 10-11)
-- [ ] Implement `action_executor.py`
+- [ ] Implement `action_executor.py` (left-click only)
 - [ ] Test click accuracy
-- [ ] Add keyboard input support
 
 ### Phase 7: Integration (Days 12-14)
 - [ ] Implement `main.py` control loop
@@ -674,85 +693,30 @@ Respond ONLY with JSON: {"X": "<1 or 2>", "Y": "<A or B>"}
 
 ---
 
-## 🔐 Security Considerations
+## 🚀 Future Plans
 
-1. **API Key Storage**: Use environment variables or `.env` file (never hardcode)
-2. **Screenshot Privacy**: Screenshots are sent to OpenAI; warn users about sensitive content
-3. **Rate Limiting**: Implement delays between API calls to avoid rate limits
+The current implementation is limited to **left-click only** for simplicity and to establish a solid foundation. Future enhancements will include:
 
----
+### Additional Mouse Actions
+- **Double-click**: For opening files, selecting words, etc.
+- **Right-click**: For context menus
+- **Drag-and-drop**: For moving files, rearranging items, selecting text ranges
+- **Hover**: For tooltips and hover-activated menus
 
-This plan provides a complete roadmap for implementing the text-guided desktop controller with a minimal UI and progressive grid-based click refinement.
+### Keyboard Actions
+- **Text Input**: Type text into input fields and text areas
+- **Keyboard Shortcuts**: Support for system shortcuts (Cmd+C, Ctrl+V, Cmd+Tab, etc.)
+- **Special Keys**: Enter, Escape, Tab, Arrow keys, etc.
 
-# Open Questions for Text-Guided Desktop Controller
+### Advanced Interactions
+- **Scrolling**: Vertical and horizontal scrolling to access off-screen elements. This will enable handling of elements that require scrolling to become visible.
+- **Multi-step Sequences**: Complex workflows combining multiple action types
+- **Action Chaining**: Automatic sequencing (e.g., click field → type text → press Enter)
+- **Multi-Application Commands**: Support for commands that span multiple applications (e.g., "Copy text from Safari and paste it in Notes"). Application switching will be handled by clicking on application icons/windows. Currently limited to left-click only.
 
-## Action Handling
-
-1. **Action Types Beyond Click**: The plan mentions typing, scrolling, and key presses, but:
-    - How does the LLM decide between click vs. type?
-    - What about right-click, double-click, drag-and-drop, hover?
-    - How are keyboard shortcuts (Cmd+C, Ctrl+V) handled?
-
-2. **Timing Between Actions**: How long should the system wait after an action before capturing the next screenshot? Some actions (opening apps, loading pages) take variable time.
-
-3. **Typing Target**: When the LLM decides to type text, how does it know where to type? Does it assume the correct field is already focused, or should it click first?
-
-4. **Scroll Parameters**: What constitutes "one scroll"? How many pixels or lines? How does the LLM specify scroll direction and amount?
-
----
-
-## Grid & Targeting
-
-5. **Elements Spanning Multiple Cells**: What if a button or element spans multiple grid cells? Should the LLM pick the center cell, or is there guidance for this?
-
-6. **Small Targets**: For very small UI elements (checkboxes, close buttons), is the 2x2 refinement sufficient precision? Should there be a third refinement level?
-
-7. **Off-Screen Elements**: What if the target element requires scrolling to become visible? How does the system detect and handle this?
-
-8. **Multiple Matching Elements**: If the command is "click the submit button" and there are multiple submit buttons visible, how should the LLM decide which one?
-
----
-
-## Error Recovery & Edge Cases
-
-9. **Repeated Failures**: If the LLM keeps selecting wrong cells (click doesn't achieve expected result), is there a retry mechanism with feedback, or does it just continue the loop?
-
-10. **Unexpected Dialogs**: What if a popup, alert, or modal appears during execution? Should the system detect and handle these specially?
-
-11. **Application Crashes**: What if the target application crashes or becomes unresponsive during execution?
-
-12. **Ambiguous Commands**: How should the system handle vague or ambiguous user commands like "do the thing" or "fix it"?
-
-13. **Command Scope**: Can users issue multi-application commands ("Copy text from Safari and paste it in Notes")? If so, how is application switching handled?
-
----
-
-## Logging & Debugging
-
-14. **Log Retention**: How long should execution logs be kept? Should there be automatic cleanup of old logs?
-
-15. **Log Size**: For long-running commands with many steps, logs could grow large. Is there a limit on steps logged or screenshot compression?
-
-16. **Sensitive Data**: Screenshots may contain passwords, personal data, or confidential information. Should there be a warning, or options to exclude certain areas?
-
----
-
-## Security & Safety
-
-17. **Dangerous Actions**: Should certain actions be blocked or require confirmation (e.g., clicking "Delete All", "Format Disk", "Send Payment")?
-
-18. **Rate Limiting**: Beyond API rate limits, should there be a limit on actions per minute to prevent runaway automation?
-
-19. **Kill Switch**: Beyond the Stop button, should there be a global keyboard shortcut (e.g., Escape 3x) to abort execution even if the UI is obscured?
-
----
-
-## Testing & Validation
-
-20. **Validation Dataset**: How will click accuracy be measured? Is there a test suite of known UI elements and expected coordinates?
-
-21. **Regression Testing**: How can prompt changes be tested to ensure they don't break existing functionality?
-
----
-
-These questions should be resolved before implementation to avoid rework and ensure the system behaves predictably across different scenarios.
+### Implementation Considerations for Future Features
+- **Action Type Detection**: LLM will need to determine the appropriate action type based on context
+- **Focus Management**: For typing, ensure the correct field is focused before input
+- **Timing and Delays**: Handle variable response times for different action types
+- **Error Recovery**: Retry mechanisms for failed actions with alternative approaches
+- **Small Target Precision**: For very small UI elements (checkboxes, close buttons), consider whether a third refinement level beyond the 2x2 grid is needed for sufficient precision
