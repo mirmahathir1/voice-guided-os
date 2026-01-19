@@ -12,7 +12,7 @@ from modules.grid_processor import (
     overlay_3x3_grid,
     get_cell_bounds, get_cell_center, crop_cell
 )
-from modules.action_executor import click_at, type_text, press_button
+from modules.action_executor import click_at, right_click_at, double_click_at, type_text, press_button
 from modules.execution_logger import ExecutionLogger
 
 
@@ -173,7 +173,7 @@ class DesktopController:
                         # Continue to next iteration
                         continue
 
-                    else:
+                    elif action == "MOUSE_LEFT_CLICK" or action == "MOUSE_RIGHT_CLICK" or action == "MOUSE_DOUBLE_CLICK":
                         # Action requires a click - perform grid selection flow
                         print("Performing grid selection flow...")
                         
@@ -183,9 +183,19 @@ class DesktopController:
                             screenshot, action_description, iteration_count
                         )
 
-                        # Execute the click
-                        print(f"Executing click at ({click_x}, {click_y})...")
-                        click_at(click_x, click_y)
+                        # Execute the appropriate click type
+                        if action == "MOUSE_LEFT_CLICK":
+                            print(f"Executing left click at ({click_x}, {click_y})...")
+                            click_at(click_x, click_y)
+                            click_type = "Left click"
+                        elif action == "MOUSE_RIGHT_CLICK":
+                            print(f"Executing right click at ({click_x}, {click_y})...")
+                            right_click_at(click_x, click_y)
+                            click_type = "Right click"
+                        elif action == "MOUSE_DOUBLE_CLICK":
+                            print(f"Executing double click at ({click_x}, {click_y})...")
+                            double_click_at(click_x, click_y)
+                            click_type = "Double click"
 
                         # Add action to history
                         self.llm_client.add_action(action, target if target else action_description)
@@ -194,7 +204,7 @@ class DesktopController:
                         final_screenshot = capture_full_screen()
                         self.logger.save_final_screenshot(final_screenshot, click_x, click_y, step=iteration_count)
 
-                        print(f"Click executed at ({click_x}, {click_y})")
+                        print(f"{click_type} executed at ({click_x}, {click_y})")
 
                         # Generate PDF for this step after all files are saved
                         try:
@@ -205,6 +215,11 @@ class DesktopController:
                             print(f"Warning: Could not generate step PDF: {e}")
 
                         # Continue to next iteration
+                        continue
+
+                    else:
+                        # Unknown action type
+                        print(f"Warning: Unknown action type '{action}'. Skipping...")
                         continue
 
                 except ValueError as e:

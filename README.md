@@ -8,8 +8,8 @@ This project enables you to control your macOS desktop using natural language co
 
 1. Capture a screenshot of your screen
 2. Use GPT-4 Vision to analyze the screenshot and determine the next action
-3. Use a two-stage grid system (10x10 → 2x2) to precisely locate click targets
-4. Execute the click and repeat until the task is complete
+3. Use a three-stage grid system (3x3 → 3x3 → 3x3) to precisely locate click targets
+4. Execute the action (click, type, button press) and repeat until the task is complete
 
 ## 🏗️ How It Works
 
@@ -26,27 +26,33 @@ The system follows a modular architecture with the following key components:
 │     ↓                                                        │
 │  2. Send to LLM with command → Get Action Plan              │
 │     ↓                                                        │
-│  3. If action requires click:                               │
-│     a. Overlay 10x10 grid → LLM selects cell               │
-│     b. Crop cell, overlay 2x2 grid → LLM refines selection │
-│     c. Calculate center point and click                    │
+│  3. Execute action based on type:                           │
+│     - Mouse actions (left/right/double-click):              │
+│       a. Overlay 3x3 grid → LLM selects cell (Stage 1)     │
+│       b. Crop cell, overlay 3x3 grid → LLM refines (Stage 2)│
+│       c. Crop cell, overlay 3x3 grid → LLM refines (Stage 3)│
+│       d. Calculate center point and execute click          │
+│     - Keyboard actions:                                      │
+│       a. Type text or press button directly                │
 │     ↓                                                        │
 │  4. Repeat until COMPLETE/ERROR                             │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Two-Stage Grid Refinement
+### Three-Stage Grid Refinement
 
-The system uses a progressive refinement approach for precise click targeting:
+The system uses a progressive three-stage refinement approach for precise click targeting:
 
-1. **10x10 Grid Selection**: The full screen is divided into a 10x10 grid (columns 1-10, rows A-J). The LLM selects the cell containing the target element.
+1. **Stage 1 - 3x3 Grid Selection**: The full screen is divided into a 3x3 grid (columns 1-3, rows A-C). The LLM selects the cell containing the target element.
 
-2. **2x2 Refinement**: The selected cell is cropped and divided into a 2x2 grid (columns 1-2, rows A-B). The LLM refines the selection to pinpoint the exact click location.
+2. **Stage 2 - 3x3 Refinement**: The selected cell from Stage 1 is cropped and divided into another 3x3 grid. The LLM refines the selection to narrow down the target area.
 
-3. **Click Execution**: The center of the final 2x2 cell is calculated and the click is executed.
+3. **Stage 3 - 3x3 Final Refinement**: The selected cell from Stage 2 is cropped and divided into a final 3x3 grid. The LLM makes the final selection to pinpoint the exact click location.
 
-This approach balances precision with efficiency, allowing the LLM to make coarse selections first, then refine to pixel-accurate clicks.
+4. **Click Execution**: The center of the final Stage 3 cell is calculated and the click is executed.
+
+This three-stage approach provides high precision while maintaining efficiency, allowing the LLM to progressively narrow down from the full screen to a precise click target.
 
 ### Action Loop
 
@@ -55,7 +61,11 @@ The main control loop runs iteratively:
 - Each iteration captures a new screenshot to see the current state
 - The LLM analyzes the screenshot and determines the next action
 - Actions can be:
-  - `MOUSE_LEFT_CLICK`: Click at a specific location (requires grid selection)
+  - `MOUSE_LEFT_CLICK`: Left click at a specific location (requires three-stage grid selection)
+  - `MOUSE_RIGHT_CLICK`: Right click at a specific location (requires three-stage grid selection)
+  - `MOUSE_DOUBLE_CLICK`: Double click at a specific location (requires three-stage grid selection)
+  - `KEYBOARD_TYPE`: Type text into the focused field
+  - `KEYBOARD_BUTTON_PRESS`: Press a special keyboard button (enter, tab, escape, etc.)
   - `COMPLETE`: Task is finished
   - `ERROR`: Task cannot be completed (with reason)
 - The loop continues until COMPLETE or ERROR, or until max iterations (20) is reached
@@ -116,14 +126,18 @@ Enter command: Navigate to settings
 
 - `"Open Chrome"` - Opens the Chrome application
 - `"Click the submit button"` - Clicks a submit button on the screen
+- `"Right-click on the file"` - Opens context menu for a file
+- `"Double-click the document"` - Opens a document
+- `"Type 'Hello World' in the search bar"` - Types text into a search field
+- `"Press Enter"` - Presses the Enter key
 - `"Navigate to the settings menu"` - Finds and clicks settings
 - `"Close the dialog"` - Closes an open dialog window
 - `"Click on the first search result"` - Clicks the first result in a search
 
 The system will:
 1. Capture a screenshot
-2. Analyze it with the LLM
-3. Execute the necessary clicks
+2. Analyze it with the LLM to determine the appropriate action
+3. Execute the action (click, type, or button press) using the three-stage grid system for mouse actions
 4. Repeat until the task is complete
 
 Press `Ctrl+C` to exit.
@@ -141,14 +155,17 @@ voice-guided-os/
 │   ├── __init__.py
 │   ├── screenshot.py          # Screenshot capture (mss-based)
 │   ├── llm_client.py            # GPT-4 Vision API communication
-│   ├── action_executor.py       # Mouse click execution
+│   ├── action_executor.py       # Mouse and keyboard action execution
 │   ├── grid_processor.py       # Grid overlay and coordinate calculation
-│   └── execution_logger.py      # Execution logging and PDF generation
+│   ├── execution_logger.py      # Execution logging and PDF generation
+│   └── ui.py                    # Optional GUI interface (tkinter-based)
 │
 ├── prompts/
 │   ├── action_prompt.txt        # Prompt for action determination
-│   ├── grid_selection.txt       # Prompt for 10x10 grid selection
-│   └── refinement_prompt.txt    # Prompt for 2x2 refinement
+│   └── grid_selection.txt       # Prompt for 3x3 grid selection (all stages)
+│
+├── utils/
+│   └── __init__.py              # Utility modules
 │
 └── execution/                  # Auto-generated execution logs
     └── <timestamp>/             # One folder per command run
@@ -163,9 +180,9 @@ voice-guided-os/
 Key settings in `config.py`:
 
 - **LLM Model**: `gpt-4o` (GPT-4 Vision)
-- **Grid Size**: 10x10 main grid, 2x2 refinement grid
+- **Grid Size**: 3x3 for all three stages (Stage 1, Stage 2, Stage 3)
 - **Max Iterations**: 20 (prevents infinite loops)
-- **Action Delay**: 1.0 second (wait time after each click)
+- **Action Delay**: 1.0 second (wait time after each action)
 - **Click Marker**: Red circle with 15px radius
 
 ## 📊 Execution Logging
@@ -190,9 +207,10 @@ Each step generates a comprehensive PDF containing:
 - **Main Prompt**: The prompt sent to the LLM for action determination
 - **Screenshot**: The screen state before the action
 - **Main Response**: The LLM's action plan
-- **Grid Selection**: 10x10 grid overlay and selection
-- **Refinement Selection**: 2x2 refinement grid and selection
-- **Final Screenshot**: Screen state after click (with red click marker)
+- **Stage 1 Grid Selection**: 3x3 grid overlay on full screen and selection
+- **Stage 2 Refinement**: 3x3 grid overlay on Stage 1 cell and selection
+- **Stage 3 Final Refinement**: 3x3 grid overlay on Stage 2 cell and selection
+- **Final Screenshot**: Screen state after action (with red click marker if applicable)
 
 This logging system enables:
 - **Debugging**: See exactly what the LLM saw and decided
@@ -201,11 +219,10 @@ This logging system enables:
 
 ## 🧠 LLM Integration
 
-The system uses OpenAI's GPT-4 Vision API with three types of prompts:
+The system uses OpenAI's GPT-4 Vision API with two types of prompts:
 
-1. **Action Determination**: Analyzes the screenshot and user command to determine the next action
-2. **Grid Selection**: Selects a cell from the 10x10 grid containing the target element
-3. **Refinement**: Selects a cell from the 2x2 grid for precise click location
+1. **Action Determination**: Analyzes the screenshot and user command to determine the next action (click, type, button press, complete, or error)
+2. **Grid Selection**: Selects a cell from a 3x3 grid (used in all three stages of refinement for mouse actions)
 
 ### Conversation History
 
@@ -224,48 +241,44 @@ The LLM maintains conversation history within a single command execution, allowi
 ## 🎯 Key Features
 
 - **Visual Understanding**: Uses GPT-4 Vision to understand screen content
-- **Precise Clicking**: Two-stage grid refinement for accurate targeting
+- **Precise Clicking**: Three-stage grid refinement (3x3 → 3x3 → 3x3) for accurate targeting
+- **Multiple Action Types**: Supports left-click, right-click, double-click, keyboard typing, and button presses
 - **Multi-Step Tasks**: Handles complex workflows automatically
-- **Complete Logging**: PDF documentation for every step
+- **Complete Logging**: PDF documentation for every step with all three grid stages
 - **Error Recovery**: Handles failures gracefully with retry logic
-- **Context Awareness**: Maintains conversation history for context
+- **Context Awareness**: Maintains conversation history and action history for context
 
 ## ⚠️ Limitations
 
-- **Left-Click Only**: Currently supports only left mouse clicks
 - **macOS Only**: Designed for macOS (primary monitor)
 - **Single Monitor**: Only captures primary display
-- **No Keyboard Input**: Cannot type text or use keyboard shortcuts
-- **No Right-Click**: Context menus not supported
-- **No Drag-and-Drop**: Cannot drag elements
+- **No Drag-and-Drop**: Cannot drag elements or select text ranges
+- **No Scrolling**: Cannot scroll to access off-screen elements
+- **No Keyboard Shortcuts**: Cannot execute keyboard shortcuts (Cmd+C, Cmd+V, etc.) - only individual button presses
+- **No Multi-Key Combinations**: Cannot press modifier key combinations (e.g., Cmd+Tab)
 
 ## 🚀 Future Plans
 
-The current implementation is limited to **left-click only** for simplicity and to establish a solid foundation. Future enhancements will include:
+The current implementation supports multiple mouse actions (left-click, right-click, double-click) and basic keyboard input (typing and button presses). Future enhancements will include:
 
-### Additional Mouse Actions
-- **Double-click**: For opening files, selecting words, etc.
-- **Right-click**: For context menus
+### Advanced Mouse Actions
 - **Drag-and-drop**: For moving files, rearranging items, selecting text ranges
 - **Hover**: For tooltips and hover-activated menus
 
-### Keyboard Actions
-- **Text Input**: Type text into input fields and text areas
+### Enhanced Keyboard Actions
 - **Keyboard Shortcuts**: Support for system shortcuts (Cmd+C, Ctrl+V, Cmd+Tab, etc.)
-- **Special Keys**: Enter, Escape, Tab, Arrow keys, etc.
+- **Multi-Key Combinations**: Support for modifier key combinations (Cmd+Shift+T, etc.)
 
 ### Advanced Interactions
 - **Scrolling**: Vertical and horizontal scrolling to access off-screen elements. This will enable handling of elements that require scrolling to become visible.
-- **Multi-step Sequences**: Complex workflows combining multiple action types
-- **Action Chaining**: Automatic sequencing (e.g., click field → type text → press Enter)
-- **Multi-Application Commands**: Support for commands that span multiple applications (e.g., "Copy text from Safari and paste it in Notes"). Application switching will be handled by clicking on application icons/windows. Currently limited to left-click only.
+- **Action Chaining**: Automatic sequencing optimizations (e.g., click field → type text → press Enter)
+- **Multi-Application Commands**: Enhanced support for commands that span multiple applications (e.g., "Copy text from Safari and paste it in Notes")
 
 ### Implementation Considerations for Future Features
-- **Action Type Detection**: LLM will need to determine the appropriate action type based on context
-- **Focus Management**: For typing, ensure the correct field is focused before input
-- **Timing and Delays**: Handle variable response times for different action types
-- **Error Recovery**: Retry mechanisms for failed actions with alternative approaches
-- **Small Target Precision**: For very small UI elements (checkboxes, close buttons), consider whether a third refinement level beyond the 2x2 grid is needed for sufficient precision
+- **Focus Management**: Enhanced focus detection and management for typing
+- **Timing and Delays**: Adaptive delays based on action type and UI responsiveness
+- **Error Recovery**: Advanced retry mechanisms with alternative approaches
+- **Grid Optimization**: Consider dynamic grid sizing based on screen resolution and target element size
 
 ## 🐛 Troubleshooting
 
@@ -279,11 +292,11 @@ The current implementation is limited to **left-click only** for simplicity and 
 
 ### Click Accuracy Issues
 - Check that the target element is visible in screenshots
-- Review execution logs to see what the LLM selected
-- Adjust grid sizes in `config.py` if needed
+- Review execution logs to see what the LLM selected at each stage
+- The three-stage grid system should provide sufficient precision for most UI elements
 
 ### Infinite Loops
 - The system stops after 20 iterations automatically
 - Check execution logs to see why the loop didn't complete
-- Verify the task can be completed with left-clicks only
+- Verify the task can be completed with the available action types (clicks, typing, button presses)
 

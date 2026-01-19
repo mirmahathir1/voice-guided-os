@@ -226,14 +226,14 @@ class LLMClient:
             if "action" not in response_json:
                 raise ValueError("Response missing 'action' key")
             
-            # Handle legacy format: if action is not MOUSE_LEFT_CLICK/COMPLETE/ERROR/KEYBOARD_TYPE/KEYBOARD_BUTTON_PRESS and no target,
-            # extract target from action description
-            if response_json["action"] not in ["COMPLETE", "ERROR", "MOUSE_LEFT_CLICK", "KEYBOARD_TYPE", "KEYBOARD_BUTTON_PRESS"]:
+            # Handle legacy format: if action is not a recognized action type, extract target from action description
+            valid_actions = ["COMPLETE", "ERROR", "MOUSE_LEFT_CLICK", "MOUSE_RIGHT_CLICK", "MOUSE_DOUBLE_CLICK", "KEYBOARD_TYPE", "KEYBOARD_BUTTON_PRESS"]
+            if response_json["action"] not in valid_actions:
                 # Legacy format: action contains description
                 action_desc = response_json["action"]
                 response_json["action"] = "MOUSE_LEFT_CLICK"
                 response_json["target"] = action_desc
-            elif response_json["action"] == "MOUSE_LEFT_CLICK" and "target" not in response_json:
+            elif response_json["action"] in ["MOUSE_LEFT_CLICK", "MOUSE_RIGHT_CLICK", "MOUSE_DOUBLE_CLICK"] and "target" not in response_json:
                 # New format but missing target - use action description if available
                 if "description" in response_json:
                     response_json["target"] = response_json.pop("description")

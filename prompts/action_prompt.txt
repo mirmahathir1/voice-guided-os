@@ -8,7 +8,9 @@ PREVIOUS ACTIONS TAKEN:
 Based on the current screen state and the actions already taken, determine the SINGLE next action needed.
 
 Respond in JSON format:
-    - If a click is needed: {{"action": "MOUSE_LEFT_CLICK", "target": "<description of what to click>"}}
+    - If a left click is needed: {{"action": "MOUSE_LEFT_CLICK", "target": "<description of what to click>"}}
+    - If a right click is needed: {{"action": "MOUSE_RIGHT_CLICK", "target": "<description of what to right-click>"}}
+    - If a double click is needed: {{"action": "MOUSE_DOUBLE_CLICK", "target": "<description of what to double-click>"}}
     - If text needs to be typed: {{"action": "KEYBOARD_TYPE", "text": "<text to type>"}}
     - If a special keyboard button needs to be pressed: {{"action": "KEYBOARD_BUTTON_PRESS", "button": "<button name>"}}
     - If task is complete: {{"action": "COMPLETE"}}
@@ -20,6 +22,10 @@ Examples:
     - {{"action": "MOUSE_LEFT_CLICK", "target": "Chrome icon in the dock"}}
     - {{"action": "MOUSE_LEFT_CLICK", "target": "search bar"}}
     - {{"action": "MOUSE_LEFT_CLICK", "target": "submit button"}}
+    - {{"action": "MOUSE_RIGHT_CLICK", "target": "file icon"}}
+    - {{"action": "MOUSE_RIGHT_CLICK", "target": "context menu item"}}
+    - {{"action": "MOUSE_DOUBLE_CLICK", "target": "file to open"}}
+    - {{"action": "MOUSE_DOUBLE_CLICK", "target": "word to select"}}
     - {{"action": "KEYBOARD_TYPE", "text": "Hello World"}}
     - {{"action": "KEYBOARD_TYPE", "text": "example@email.com"}}
     - {{"action": "KEYBOARD_BUTTON_PRESS", "button": "enter"}}
