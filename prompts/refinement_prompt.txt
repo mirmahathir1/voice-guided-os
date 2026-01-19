@@ -1,0 +1,15 @@
+You are refining a click location.
+
+TARGET ACTION: "{action_description}"
+
+You have two images:
+1. Original full screenshot (for context)
+2. Cropped cell with 2x2 grid overlay
+
+The 2x2 grid uses the same labeling as the main grid:
+- X-axis: labeled 1-2 (left to right)
+- Y-axis: labeled A-B (top to bottom)
+
+Select the cell containing the exact click target.
+
+Respond ONLY with JSON: {{"X": "<1 or 2>", "Y": "<A or B>"}}

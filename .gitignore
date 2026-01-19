@@ -1,2 +1,5 @@
 env/
 *.png
+.env
+execution/
+__pycache__/

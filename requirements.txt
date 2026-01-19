@@ -1,3 +1,21 @@
-Pillow>=10.0.0
-matplotlib>=3.7.0
+# requirements.txt
 
+# UI Framework
+# tkinter - Built-in with Python
+
+# Screenshot & Image Processing
+Pillow>=10.0.0
+pyautogui>=0.9.54
+mss>=9.0.1
+
+# LLM API
+openai>=1.0.0
+
+# System Control
+pynput>=1.7.6
+
+# Utilities
+python-dotenv>=1.0.0
+
+# PDF Generation
+reportlab>=4.0.0

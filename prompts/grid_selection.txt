@@ -1,0 +1,11 @@
+You are helping locate a UI element on screen.
+
+TARGET ACTION: "{action_description}"
+
+The screenshot has a 10x10 grid overlay:
+- X-axis: labeled 1-10 (left to right)
+- Y-axis: labeled A-J (top to bottom)
+
+Identify which cell contains the element needed for the target action.
+
+Respond ONLY with JSON: {{"X": "<1-10>", "Y": "<A-J>"}}
