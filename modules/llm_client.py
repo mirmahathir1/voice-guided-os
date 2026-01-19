@@ -35,7 +35,6 @@ class LLMClient:
         self.prompts_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts")
         self.action_prompt_template = self._load_prompt("action_prompt.txt")
         self.grid_selection_template = self._load_prompt("grid_selection.txt")
-        self.refinement_template = self._load_prompt("refinement_prompt.txt")
         
         # Conversation history for multi-step tasks
         self.conversation_history = []
@@ -227,9 +226,9 @@ class LLMClient:
             if "action" not in response_json:
                 raise ValueError("Response missing 'action' key")
             
-            # Handle legacy format: if action is not MOUSE_LEFT_CLICK/COMPLETE/ERROR and no target,
+            # Handle legacy format: if action is not MOUSE_LEFT_CLICK/COMPLETE/ERROR/KEYBOARD_TYPE/KEYBOARD_BUTTON_PRESS and no target,
             # extract target from action description
-            if response_json["action"] not in ["COMPLETE", "ERROR", "MOUSE_LEFT_CLICK"]:
+            if response_json["action"] not in ["COMPLETE", "ERROR", "MOUSE_LEFT_CLICK", "KEYBOARD_TYPE", "KEYBOARD_BUTTON_PRESS"]:
                 # Legacy format: action contains description
                 action_desc = response_json["action"]
                 response_json["action"] = "MOUSE_LEFT_CLICK"
@@ -240,6 +239,22 @@ class LLMClient:
                     response_json["target"] = response_json.pop("description")
                 else:
                     response_json["target"] = "unknown target"
+            elif response_json["action"] == "KEYBOARD_TYPE" and "text" not in response_json:
+                # KEYBOARD_TYPE action but missing text - try to extract from description or target
+                if "description" in response_json:
+                    response_json["text"] = response_json.pop("description")
+                elif "target" in response_json:
+                    response_json["text"] = response_json.pop("target")
+                else:
+                    raise ValueError("KEYBOARD_TYPE action requires 'text' parameter")
+            elif response_json["action"] == "KEYBOARD_BUTTON_PRESS" and "button" not in response_json:
+                # KEYBOARD_BUTTON_PRESS action but missing button - try to extract from description or target
+                if "description" in response_json:
+                    response_json["button"] = response_json.pop("description")
+                elif "target" in response_json:
+                    response_json["button"] = response_json.pop("target")
+                else:
+                    raise ValueError("KEYBOARD_BUTTON_PRESS action requires 'button' parameter")
             
             # Save to conversation history
             self.conversation_history.append({
@@ -318,17 +333,18 @@ Respond with ONLY the JSON object, nothing else."""
         
         return response_json
     
-    def select_grid_cell(self, gridded_screenshot, action_description, logger=None):
+    def select_grid_cell(self, gridded_screenshot, action_description, logger=None, stage=1):
         """
-        Get 10x10 grid cell selection from LLM.
+        Get 3x3 grid cell selection from LLM.
         
         Args:
-            gridded_screenshot (PIL.Image): Screenshot with 10x10 grid overlay
+            gridded_screenshot (PIL.Image): Screenshot with 3x3 grid overlay
             action_description (str): Description of the target action
             logger (ExecutionLogger, optional): Logger for saving prompts/responses
+            stage (int): Stage number (1, 2, or 3) for logging purposes
             
         Returns:
-            dict: Grid selection with "X" (1-10) and "Y" (A-J) keys
+            dict: Grid selection with "X" (1-3) and "Y" (A-C) keys
         """
         # Format the grid selection prompt
         prompt_text = self._format_prompt(
@@ -342,7 +358,7 @@ Respond with ONLY the JSON object, nothing else."""
         messages = [
             {
                 "role": "system",
-                "content": "You are helping locate UI elements on screen using a grid system."
+                "content": "You are helping locate UI elements on screen using a 3x3 grid system."
             },
             {
                 "role": "user",
@@ -369,15 +385,15 @@ Respond with ONLY the JSON object, nothing else."""
         if "X" not in response_json or "Y" not in response_json:
             raise ValueError("Response missing 'X' or 'Y' key")
         
-        # Validate X is 1-10
+        # Validate X is 1-3
         x_val = str(response_json["X"]).strip()
-        if not x_val.isdigit() or int(x_val) < 1 or int(x_val) > 10:
-            raise ValueError(f"Invalid X value: {x_val}. Must be 1-10")
+        if not x_val.isdigit() or int(x_val) < 1 or int(x_val) > 3:
+            raise ValueError(f"Invalid X value: {x_val}. Must be 1-3")
         
-        # Validate Y is A-J
+        # Validate Y is A-C
         y_val = str(response_json["Y"]).strip().upper()
-        if y_val not in "ABCDEFGHIJ":
-            raise ValueError(f"Invalid Y value: {y_val}. Must be A-J")
+        if y_val not in "ABC":
+            raise ValueError(f"Invalid Y value: {y_val}. Must be A-C")
         
         # Normalize response
         response_json["X"] = x_val
@@ -390,82 +406,3 @@ Respond with ONLY the JSON object, nothing else."""
         
         return response_json
     
-    def refine_selection(self, original_screenshot, cropped_2x2_image, action_description, logger=None):
-        """
-        Get 2x2 refinement selection from LLM.
-        
-        Args:
-            original_screenshot (PIL.Image): Original full screenshot for context
-            cropped_2x2_image (PIL.Image): Cropped cell with 2x2 grid overlay
-            action_description (str): Description of the target action
-            logger (ExecutionLogger, optional): Logger for saving prompts/responses
-            
-        Returns:
-            dict: Refinement selection with "X" (1-2) and "Y" (A-B) keys
-        """
-        # Format the refinement prompt
-        prompt_text = self._format_prompt(
-            self.refinement_template,
-            action_description=action_description
-        )
-        
-        # Encode both images to base64
-        original_base64 = encode_to_base64(original_screenshot)
-        cropped_base64 = encode_to_base64(cropped_2x2_image)
-        
-        messages = [
-            {
-                "role": "system",
-                "content": "You are refining a click location using a 2x2 grid overlay."
-            },
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": prompt_text
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{original_base64}"
-                        }
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{cropped_base64}"
-                        }
-                    }
-                ]
-            }
-        ]
-        
-        # Make API call
-        response_text = self._make_api_call(messages)
-        response_json = self._parse_json_response(response_text)
-        
-        # Validate response structure
-        if "X" not in response_json or "Y" not in response_json:
-            raise ValueError("Response missing 'X' or 'Y' key")
-        
-        # Validate X is 1-2
-        x_val = str(response_json["X"]).strip()
-        if x_val not in ["1", "2"]:
-            raise ValueError(f"Invalid X value: {x_val}. Must be 1 or 2")
-        
-        # Validate Y is A-B
-        y_val = str(response_json["Y"]).strip().upper()
-        if y_val not in ["A", "B"]:
-            raise ValueError(f"Invalid Y value: {y_val}. Must be A or B")
-        
-        # Normalize response
-        response_json["X"] = x_val
-        response_json["Y"] = y_val
-        
-        # Log if logger provided
-        if logger:
-            logger.save_prompt(prompt_text)
-            logger.save_response(response_json)
-        
-        return response_json

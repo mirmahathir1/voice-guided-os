@@ -9,10 +9,10 @@ import config
 from modules.screenshot import capture_full_screen
 from modules.llm_client import LLMClient
 from modules.grid_processor import (
-    overlay_10x10_grid, overlay_2x2_grid,
+    overlay_3x3_grid,
     get_cell_bounds, get_cell_center, crop_cell
 )
-from modules.action_executor import click_at
+from modules.action_executor import click_at, type_text, press_button
 from modules.execution_logger import ExecutionLogger
 
 
@@ -83,7 +83,9 @@ class DesktopController:
 
                     action = action_response.get("action", "")
                     target = action_response.get("target", "")
-                    print(f"Action determined: {action}" + (f" - {target}" if target else ""))
+                    text = action_response.get("text", "")
+                    button = action_response.get("button", "")
+                    print(f"Action determined: {action}" + (f" - {target}" if target else "") + (f" - text: {text}" if text else "") + (f" - button: {button}" if button else ""))
 
                     # Step 3: Handle different action types
                     if action == "COMPLETE":
@@ -108,6 +110,68 @@ class DesktopController:
                         except Exception as e:
                             print(f"Warning: Could not generate step PDF: {e}")
                         break
+
+                    elif action == "KEYBOARD_TYPE":
+                        # Handle keyboard typing action
+                        if not text:
+                            print("Warning: KEYBOARD_TYPE action specified but no text provided")
+                            continue
+                        
+                        print(f"Typing text: {text}")
+                        type_text(text)
+                        
+                        # Add action to history
+                        self.llm_client.add_action(action, text)
+                        
+                        # Capture final screenshot after typing
+                        final_screenshot = capture_full_screen()
+                        self.logger.save_final_screenshot(final_screenshot, None, None, step=iteration_count)
+                        
+                        print(f"Text typed: {text}")
+                        
+                        # Generate PDF for this step after all files are saved
+                        try:
+                            pdf_path = self.logger.generate_step_pdf(iteration_count)
+                            if pdf_path:
+                                print(f"Generated step PDF: {pdf_path}")
+                        except Exception as e:
+                            print(f"Warning: Could not generate step PDF: {e}")
+                        
+                        # Continue to next iteration
+                        continue
+
+                    elif action == "KEYBOARD_BUTTON_PRESS":
+                        # Handle keyboard button press action
+                        if not button:
+                            print("Warning: KEYBOARD_BUTTON_PRESS action specified but no button provided")
+                            continue
+                        
+                        print(f"Pressing button: {button}")
+                        try:
+                            press_button(button)
+                        except ValueError as e:
+                            print(f"Error: {str(e)}")
+                            continue
+                        
+                        # Add action to history
+                        self.llm_client.add_action(action, button)
+                        
+                        # Capture final screenshot after button press
+                        final_screenshot = capture_full_screen()
+                        self.logger.save_final_screenshot(final_screenshot, None, None, step=iteration_count)
+                        
+                        print(f"Button pressed: {button}")
+                        
+                        # Generate PDF for this step after all files are saved
+                        try:
+                            pdf_path = self.logger.generate_step_pdf(iteration_count)
+                            if pdf_path:
+                                print(f"Generated step PDF: {pdf_path}")
+                        except Exception as e:
+                            print(f"Warning: Could not generate step PDF: {e}")
+                        
+                        # Continue to next iteration
+                        continue
 
                     else:
                         # Action requires a click - perform grid selection flow
@@ -169,7 +233,7 @@ class DesktopController:
 
     def perform_grid_selection(self, screenshot, action_description, step):
         """
-        Perform the grid selection flow to determine click coordinates.
+        Perform the three-stage 3x3 grid selection flow to determine click coordinates.
 
         Args:
             screenshot (PIL.Image): Full screen screenshot
@@ -179,77 +243,99 @@ class DesktopController:
         Returns:
             tuple: (x, y) click coordinates
         """
-        # Step 1: Overlay 10x10 grid
-        print("  - Overlaying 10x10 grid...")
-        gridded_screenshot = overlay_10x10_grid(screenshot)
-        self.logger.save_screenshot(gridded_screenshot, step=step, suffix="grid")
-
-        # Step 2: Get grid cell selection from LLM
-        print("  - Querying LLM for 10x10 grid cell...")
-
+        # Helper class for logging different stages
         class StepLogger:
-            def __init__(self, logger, step, suffix="grid"):
+            def __init__(self, logger, step, stage_num):
                 self.logger = logger
                 self.step = step
-                self.suffix = suffix
+                self.stage_num = stage_num
 
             def save_prompt(self, prompt):
-                if self.suffix == "grid":
+                if self.stage_num == 1:
                     self.logger.save_grid_prompt(prompt, self.step)
-                elif self.suffix == "refinement":
-                    self.logger.save_refinement_prompt(prompt, self.step)
+                elif self.stage_num == 2:
+                    self.logger.save_refinement_prompt(prompt, self.step, stage=2)
+                elif self.stage_num == 3:
+                    self.logger.save_refinement_prompt(prompt, self.step, stage=3)
 
             def save_response(self, response):
-                if self.suffix == "grid":
+                if self.stage_num == 1:
                     self.logger.save_grid_response(response, self.step)
-                elif self.suffix == "refinement":
-                    self.logger.save_refinement_response(response, self.step)
+                elif self.stage_num == 2:
+                    self.logger.save_refinement_response(response, self.step, stage=2)
+                elif self.stage_num == 3:
+                    self.logger.save_refinement_response(response, self.step, stage=3)
 
-        grid_logger = StepLogger(self.logger, step, "grid")
-        grid_selection = self.llm_client.select_grid_cell(
-            gridded_screenshot, action_description, logger=grid_logger
+        # Stage 1: Overlay 3x3 grid on full screen
+        print("  - Stage 1: Overlaying 3x3 grid on full screen...")
+        gridded_screenshot = overlay_3x3_grid(screenshot)
+        self.logger.save_screenshot(gridded_screenshot, step=step, suffix="grid_stage1")
+
+        # Get stage 1 selection from LLM
+        print("  - Querying LLM for stage 1 (3x3) grid cell...")
+        stage1_logger = StepLogger(self.logger, step, 1)
+        stage1_selection = self.llm_client.select_grid_cell(
+            gridded_screenshot, action_description, logger=stage1_logger, stage=1
         )
 
-        x_cell = grid_selection["X"]
-        y_cell = grid_selection["Y"]
-        print(f"  - Selected cell: {y_cell}{x_cell}")
+        x_cell1 = stage1_selection["X"]
+        y_cell1 = stage1_selection["Y"]
+        print(f"  - Stage 1 selected cell: {y_cell1}{x_cell1}")
 
-        # Step 3: Get cell bounds and crop
-        cell_bounds = get_cell_bounds(grid_selection, screenshot.size)
-        cropped_cell = crop_cell(screenshot, cell_bounds)
+        # Get cell bounds and crop for stage 1
+        cell_bounds1 = get_cell_bounds(stage1_selection, screenshot.size)
+        cropped_cell1 = crop_cell(screenshot, cell_bounds1)
 
-        # Step 4: Overlay 2x2 grid on cropped cell
-        print("  - Overlaying 2x2 refinement grid...")
-        cropped_2x2 = overlay_2x2_grid(cropped_cell)
-        self.logger.save_screenshot(cropped_2x2, step=step, suffix="crop_2x2")
+        # Stage 2: Overlay 3x3 grid on stage 1 selected cell
+        print("  - Stage 2: Overlaying 3x3 grid on stage 1 cell...")
+        gridded_cell1 = overlay_3x3_grid(cropped_cell1)
+        self.logger.save_screenshot(gridded_cell1, step=step, suffix="grid_stage2")
 
-        # Step 5: Get 2x2 refinement selection from LLM
-        print("  - Querying LLM for 2x2 refinement...")
-
-        refinement_logger = StepLogger(self.logger, step, "refinement")
-        refinement_selection = self.llm_client.refine_selection(
-            screenshot, cropped_2x2, action_description, logger=refinement_logger
+        # Get stage 2 selection from LLM
+        print("  - Querying LLM for stage 2 (3x3) grid cell...")
+        stage2_logger = StepLogger(self.logger, step, 2)
+        stage2_selection = self.llm_client.select_grid_cell(
+            gridded_cell1, action_description, logger=stage2_logger, stage=2
         )
 
-        ref_x = refinement_selection["X"]
-        ref_y = refinement_selection["Y"]
-        print(f"  - Refinement cell: {ref_y}{ref_x}")
+        x_cell2 = stage2_selection["X"]
+        y_cell2 = stage2_selection["Y"]
+        print(f"  - Stage 2 selected cell: {y_cell2}{x_cell2}")
 
-        # Step 6: Calculate final click coordinates
-        # Get the bounds of the refinement cell within the cropped cell
-        refinement_bounds = get_cell_bounds(
-            refinement_selection,
-            cropped_cell.size,
-            grid_cols=config.REFINEMENT_COLS,
-            grid_rows=config.REFINEMENT_ROWS
+        # Get cell bounds and crop for stage 2 (relative to cropped_cell1)
+        cell_bounds2 = get_cell_bounds(stage2_selection, cropped_cell1.size)
+        cropped_cell2 = crop_cell(cropped_cell1, cell_bounds2)
+
+        # Stage 3: Overlay 3x3 grid on stage 2 selected cell
+        print("  - Stage 3: Overlaying 3x3 grid on stage 2 cell...")
+        gridded_cell2 = overlay_3x3_grid(cropped_cell2)
+        self.logger.save_screenshot(gridded_cell2, step=step, suffix="grid_stage3")
+
+        # Get stage 3 selection from LLM
+        print("  - Querying LLM for stage 3 (3x3) grid cell...")
+        stage3_logger = StepLogger(self.logger, step, 3)
+        stage3_selection = self.llm_client.select_grid_cell(
+            gridded_cell2, action_description, logger=stage3_logger, stage=3
         )
 
-        # Get center of refinement cell (relative to cropped cell)
-        ref_center = get_cell_center(refinement_bounds)
+        x_cell3 = stage3_selection["X"]
+        y_cell3 = stage3_selection["Y"]
+        print(f"  - Stage 3 selected cell: {y_cell3}{x_cell3}")
+
+        # Calculate final click coordinates
+        # Get the bounds of stage 3 cell (relative to cropped_cell2)
+        cell_bounds3 = get_cell_bounds(stage3_selection, cropped_cell2.size)
+
+        # Get center of stage 3 cell (relative to cropped_cell2)
+        stage3_center = get_cell_center(cell_bounds3)
+
+        # Convert stage 3 center to cropped_cell1 coordinates
+        stage2_relative_x = cell_bounds2[0] + stage3_center[0]
+        stage2_relative_y = cell_bounds2[1] + stage3_center[1]
 
         # Convert to absolute screen coordinates
-        click_x = cell_bounds[0] + ref_center[0]
-        click_y = cell_bounds[1] + ref_center[1]
+        click_x = cell_bounds1[0] + stage2_relative_x
+        click_y = cell_bounds1[1] + stage2_relative_y
 
         return (click_x, click_y)
 

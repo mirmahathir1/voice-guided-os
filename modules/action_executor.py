@@ -1,6 +1,6 @@
 """
 Action executor module for text-guided desktop controller.
-Executes mouse actions (left-click only) using logical pixel coordinates.
+Executes mouse actions (left-click only) and keyboard actions using logical pixel coordinates.
 """
 
 import time
@@ -34,4 +34,61 @@ def click_at(x, y):
         )
 
     pyautogui.click(x, y)
+    time.sleep(config.ACTION_DELAY_SECONDS)
+
+
+def type_text(text):
+    """
+    Type the given text using the keyboard.
+    After typing, waits ACTION_DELAY_SECONDS to allow UI updates.
+
+    Args:
+        text (str): Text to type
+    """
+    if not text:
+        return
+    
+    pyautogui.write(text, interval=0.05)  # Small delay between characters for reliability
+    time.sleep(config.ACTION_DELAY_SECONDS)
+
+
+def press_button(button):
+    """
+    Press a special keyboard button (non-alphanumeric).
+    Supports keys like 'enter', 'tab', 'escape', 'return', 'backspace', etc.
+    After pressing, waits ACTION_DELAY_SECONDS to allow UI updates.
+
+    Args:
+        button (str): Name of the button to press (e.g., 'enter', 'tab', 'escape')
+    
+    Raises:
+        ValueError: If button name is invalid or not supported
+    """
+    if not button:
+        raise ValueError("Button name cannot be empty")
+    
+    # Normalize button name to lowercase
+    button = button.lower().strip()
+    
+    # List of valid button names supported by pyautogui
+    valid_buttons = [
+        'enter', 'return', 'tab', 'escape', 'esc', 'space', 'backspace',
+        'delete', 'up', 'down', 'left', 'right', 'home', 'end', 'pageup',
+        'pagedown', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9',
+        'f10', 'f11', 'f12', 'ctrl', 'alt', 'shift', 'cmd', 'command',
+        'win', 'windows', 'capslock', 'numlock', 'scrolllock'
+    ]
+    
+    # Check if button is valid
+    if button not in valid_buttons:
+        raise ValueError(
+            f"Invalid button name: {button}. "
+            f"Valid buttons include: {', '.join(valid_buttons[:10])}..."
+        )
+    
+    # Map 'esc' to 'escape' for consistency
+    if button == 'esc':
+        button = 'escape'
+    
+    pyautogui.press(button)
     time.sleep(config.ACTION_DELAY_SECONDS)

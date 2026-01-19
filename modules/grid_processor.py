@@ -1,6 +1,6 @@
 """
 Grid processor module for text-guided desktop controller.
-Handles grid overlay drawing and coordinate calculations for 10x10 and 2x2 grids.
+Handles grid overlay drawing and coordinate calculations for 3x3 grids.
 """
 
 from PIL import Image, ImageDraw, ImageFont
@@ -18,26 +18,26 @@ def _get_font(size=14):
             return ImageFont.load_default()
 
 
-def overlay_10x10_grid(image):
+def overlay_3x3_grid(image):
     """
-    Draw a labeled 10x10 grid on a copy of the image.
-    Columns 1-10 (left to right), Rows A-J (top to bottom).
+    Draw a labeled 3x3 grid on a copy of the image.
+    Columns 1-3 (left to right), Rows A-C (top to bottom).
     Adds white padding on left and bottom for labels, and draws grid in red.
 
     Args:
         image (PIL.Image): Screenshot or image to overlay
 
     Returns:
-        PIL.Image: New image with 10x10 grid and labels drawn (original unchanged)
+        PIL.Image: New image with 3x3 grid and labels drawn (original unchanged)
     """
     # Original image dimensions
     orig_w, orig_h = image.size
     cols, rows = config.GRID_COLS, config.GRID_ROWS
     cw, ch = orig_w / cols, orig_h / rows
     
-    # Calculate padding size (proportional to cell size, minimum 60px)
-    left_padding = max(60, int(cw * 0.25))
-    bottom_padding = max(50, int(ch * 0.25))
+    # Calculate padding size (proportional to cell size, minimum 50px)
+    left_padding = max(50, int(cw * 0.25))
+    bottom_padding = max(40, int(ch * 0.25))
     
     # Create new image with padding
     new_w = orig_w + left_padding
@@ -62,7 +62,7 @@ def overlay_10x10_grid(image):
 
     font = _get_font(min(24, max(16, int(cw * 0.6))))
 
-    # Column labels 1-10 in bottom padding area
+    # Column labels 1-3 in bottom padding area
     for j in range(cols):
         x = left_padding + (j + 0.5) * cw
         try:
@@ -72,7 +72,7 @@ def overlay_10x10_grid(image):
         tw = bbox[2] - bbox[0] if hasattr(bbox, '__len__') and len(bbox) >= 3 else 10
         draw.text((int(x - tw / 2), orig_h + 2), str(j + 1), fill="black", font=font)
 
-    # Row labels A-J in left padding area
+    # Row labels A-C in left padding area
     for i in range(rows):
         label = chr(ord("A") + i)
         y = (i + 0.5) * ch
@@ -86,83 +86,15 @@ def overlay_10x10_grid(image):
     return out
 
 
-def overlay_2x2_grid(image):
-    """
-    Draw a labeled 2x2 grid on a copy of the image.
-    Columns 1-2, Rows A-B.
-    Adds white padding on left and bottom for labels, and draws grid in red.
-
-    Args:
-        image (PIL.Image): Cropped cell image to overlay
-
-    Returns:
-        PIL.Image: New image with 2x2 grid and labels drawn (original unchanged)
-    """
-    # Original image dimensions
-    orig_w, orig_h = image.size
-    cols, rows = config.REFINEMENT_COLS, config.REFINEMENT_ROWS
-    cw, ch = orig_w / cols, orig_h / rows
-    
-    # Calculate padding size (proportional to cell size, minimum 40px)
-    left_padding = max(40, int(cw * 0.3))
-    bottom_padding = max(40, int(ch * 0.3))
-    
-    # Create new image with padding
-    new_w = orig_w + left_padding
-    new_h = orig_h + bottom_padding
-    out = Image.new("RGB", (new_w, new_h), "white")
-    
-    # Paste original image at (left_padding, 0) so padding is on left and bottom
-    out.paste(image, (left_padding, 0))
-    
-    draw = ImageDraw.Draw(out)
-    
-    # Grid lines (red) - only on the original image area
-    for i in range(1, cols):
-        x = left_padding + int(i * cw)
-        draw.line([(x, 0), (x, orig_h)], fill="red", width=2)
-    for i in range(1, rows):
-        y = int(i * ch)
-        draw.line([(left_padding, y), (left_padding + orig_w, y)], fill="red", width=2)
-    
-    # Draw border around the grid area
-    draw.rectangle([(left_padding, 0), (left_padding + orig_w, orig_h)], outline="red", width=2)
-
-    font = _get_font(min(20, max(14, int(min(cw, ch) * 0.7))))
-
-    # Column labels 1, 2 in bottom padding area
-    for j in range(cols):
-        x = left_padding + (j + 0.5) * cw
-        try:
-            bbox = draw.textbbox((0, 0), str(j + 1), font=font)
-        except AttributeError:
-            bbox = draw.textsize(str(j + 1), font=font)
-        tw = bbox[2] - bbox[0] if hasattr(bbox, '__len__') and len(bbox) >= 3 else 8
-        draw.text((int(x - tw / 2), orig_h + 2), str(j + 1), fill="black", font=font)
-
-    # Row labels A, B in left padding area
-    for i in range(rows):
-        label = chr(ord("A") + i)
-        y = (i + 0.5) * ch
-        try:
-            bbox = draw.textbbox((0, 0), label, font=font)
-        except AttributeError:
-            bbox = draw.textsize(label, font=font)
-        th = (bbox[3] - bbox[1]) if hasattr(bbox, '__len__') and len(bbox) >= 4 else 10
-        draw.text((left_padding // 2, int(y - th / 2)), label, fill="black", font=font)
-
-    return out
-
-
 def get_cell_bounds(grid_ref, image_size, grid_cols=None, grid_rows=None):
     """
     Compute pixel bounds (x1, y1, x2, y2) for a grid cell.
 
     Args:
-        grid_ref (dict): {"X": "1"-"10" or "1"-"2", "Y": "A"-"J" or "A"-"B"}
+        grid_ref (dict): {"X": "1"-"3", "Y": "A"-"C"}
         image_size (tuple): (width, height) of the image
-        grid_cols (int, optional): Number of columns (default: config.GRID_COLS for 10x10)
-        grid_rows (int, optional): Number of rows (default: config.GRID_ROWS for 10x10)
+        grid_cols (int, optional): Number of columns (default: config.GRID_COLS for 3x3)
+        grid_rows (int, optional): Number of rows (default: config.GRID_ROWS for 3x3)
 
     Returns:
         tuple: (x1, y1, x2, y2) in pixel coordinates

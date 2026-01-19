@@ -20,11 +20,10 @@ LLM_MODEL = "gpt-4o"  # Using gpt-4o as gpt-5.2 may not be available
 LLM_TEMPERATURE = 0.0  # Deterministic responses
 LLM_MAX_TOKENS = 256  # Sufficient for JSON responses
 
-# Grid Configuration
-GRID_ROWS = 10  # A-J
-GRID_COLS = 10  # 1-10
-REFINEMENT_ROWS = 2  # A-B
-REFINEMENT_COLS = 2  # 1-2
+# Grid Configuration - Using 3x3 grids for three-stage selection
+GRID_ROWS = 3  # A-C
+GRID_COLS = 3  # 1-3
+# Note: All three stages use 3x3 grids
 
 # Click Marker Configuration
 CLICK_MARKER_COLOR = "red"

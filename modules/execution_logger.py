@@ -86,7 +86,7 @@ class ExecutionLogger:
         Args:
             image (PIL.Image): Screenshot image to store
             step (int, optional): Step number. If None, auto-increments
-            suffix (str, optional): Additional suffix (e.g., "grid", "crop_2x2")
+            suffix (str, optional): Additional suffix (e.g., "grid_stage1", "grid_stage2", "grid_stage3")
         
         Returns:
             str: Virtual path (for compatibility)
@@ -221,14 +221,14 @@ class ExecutionLogger:
         
         return marked_image
     
-    def save_final_screenshot(self, image, click_x, click_y, step=None):
+    def save_final_screenshot(self, image, click_x=None, click_y=None, step=None):
         """
-        Store final screenshot with red click marker in memory (not saved to disk).
+        Store final screenshot with optional red click marker in memory (not saved to disk).
         
         Args:
             image (PIL.Image): Final screenshot image
-            click_x (int): X coordinate where click was executed
-            click_y (int): Y coordinate where click was executed
+            click_x (int, optional): X coordinate where click was executed. If None, no marker is drawn.
+            click_y (int, optional): Y coordinate where click was executed. If None, no marker is drawn.
             step (int, optional): Step number. If None, uses current step
         
         Returns:
@@ -237,8 +237,11 @@ class ExecutionLogger:
         if not self.execution_folder:
             raise ValueError("Execution folder not created. Call create_execution_folder() first.")
         
-        # Draw click marker on image
-        marked_image = self.draw_click_marker(image, click_x, click_y)
+        # Draw click marker on image only if coordinates are provided
+        if click_x is not None and click_y is not None:
+            marked_image = self.draw_click_marker(image, click_x, click_y)
+        else:
+            marked_image = image.copy()
         
         # Determine step number
         if step is None:
@@ -282,21 +285,23 @@ class ExecutionLogger:
             response_dict = response_json
         self.step_data[step]["grid_response"] = response_dict
     
-    def save_refinement_prompt(self, prompt_text, step):
-        """Store refinement prompt in memory."""
+    def save_refinement_prompt(self, prompt_text, step, stage=2):
+        """Store refinement prompt in memory for stage 2 or 3."""
         if step not in self.step_data:
             self.step_data[step] = {}
-        self.step_data[step]["refinement_prompt"] = prompt_text
+        key = f"refinement_prompt_stage{stage}"
+        self.step_data[step][key] = prompt_text
     
-    def save_refinement_response(self, response_json, step):
-        """Store refinement response in memory."""
+    def save_refinement_response(self, response_json, step, stage=2):
+        """Store refinement response in memory for stage 2 or 3."""
         if step not in self.step_data:
             self.step_data[step] = {}
         if isinstance(response_json, str):
             response_dict = json.loads(response_json)
         else:
             response_dict = response_json
-        self.step_data[step]["refinement_response"] = response_dict
+        key = f"refinement_response_stage{stage}"
+        self.step_data[step][key] = response_dict
     
     def _add_image_to_pdf(self, story, image, heading_text, heading_style):
         """Helper to add an image to PDF with proper sizing and high quality."""
@@ -449,10 +454,10 @@ class ExecutionLogger:
             story.append(response_para)
             story.append(Spacer(1, 0.1 * inch))
         
-        # Add grid selection section if exists
-        if 'screenshot_grid' in step_data or 'grid_prompt' in step_data or 'grid_response' in step_data:
+        # Add stage 1 grid selection section if exists
+        if 'screenshot_grid_stage1' in step_data or 'grid_prompt' in step_data or 'grid_response' in step_data:
             story.append(PageBreak())
-            story.append(Paragraph("Grid Selection (10x10)", heading_style))
+            story.append(Paragraph("Stage 1: Grid Selection (3x3)", heading_style))
             
             if 'grid_prompt' in step_data:
                 story.append(Paragraph("Grid Selection Prompt", heading_style))
@@ -473,17 +478,17 @@ class ExecutionLogger:
                 story.append(grid_response_para)
                 story.append(Spacer(1, 0.1 * inch))
             
-            if 'screenshot_grid' in step_data:
-                self._add_image_to_pdf(story, step_data['screenshot_grid'], "Grid Overlay Screenshot", heading_style)
+            if 'screenshot_grid_stage1' in step_data:
+                self._add_image_to_pdf(story, step_data['screenshot_grid_stage1'], "Stage 1: Grid Overlay Screenshot", heading_style)
         
-        # Add refinement section if exists
-        if 'screenshot_crop_2x2' in step_data or 'refinement_prompt' in step_data or 'refinement_response' in step_data:
+        # Add stage 2 refinement section if exists
+        if 'screenshot_grid_stage2' in step_data or 'refinement_prompt_stage2' in step_data or 'refinement_response_stage2' in step_data:
             story.append(PageBreak())
-            story.append(Paragraph("Refinement Selection (2x2)", heading_style))
+            story.append(Paragraph("Stage 2: Refinement Selection (3x3)", heading_style))
             
-            if 'refinement_prompt' in step_data:
-                story.append(Paragraph("Refinement Prompt", heading_style))
-                refinement_prompt_text = step_data['refinement_prompt']
+            if 'refinement_prompt_stage2' in step_data:
+                story.append(Paragraph("Stage 2 Prompt", heading_style))
+                refinement_prompt_text = step_data['refinement_prompt_stage2']
                 # Escape HTML special characters
                 refinement_prompt_text = refinement_prompt_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 # Convert newlines to <br/> tags to preserve formatting
@@ -492,16 +497,43 @@ class ExecutionLogger:
                 story.append(refinement_prompt_para)
                 story.append(Spacer(1, 0.1 * inch))
             
-            if 'refinement_response' in step_data:
-                story.append(Paragraph("Refinement Response", heading_style))
-                refinement_response_text = json.dumps(step_data['refinement_response'], indent=2, ensure_ascii=False)
+            if 'refinement_response_stage2' in step_data:
+                story.append(Paragraph("Stage 2 Response", heading_style))
+                refinement_response_text = json.dumps(step_data['refinement_response_stage2'], indent=2, ensure_ascii=False)
                 refinement_response_text = refinement_response_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                 refinement_response_para = Paragraph(refinement_response_text, body_style)
                 story.append(refinement_response_para)
                 story.append(Spacer(1, 0.1 * inch))
             
-            if 'screenshot_crop_2x2' in step_data:
-                self._add_image_to_pdf(story, step_data['screenshot_crop_2x2'], "Cropped Cell with 2x2 Grid", heading_style)
+            if 'screenshot_grid_stage2' in step_data:
+                self._add_image_to_pdf(story, step_data['screenshot_grid_stage2'], "Stage 2: Cropped Cell with 3x3 Grid", heading_style)
+        
+        # Add stage 3 refinement section if exists
+        if 'screenshot_grid_stage3' in step_data or 'refinement_prompt_stage3' in step_data or 'refinement_response_stage3' in step_data:
+            story.append(PageBreak())
+            story.append(Paragraph("Stage 3: Final Refinement Selection (3x3)", heading_style))
+            
+            if 'refinement_prompt_stage3' in step_data:
+                story.append(Paragraph("Stage 3 Prompt", heading_style))
+                refinement_prompt_text = step_data['refinement_prompt_stage3']
+                # Escape HTML special characters
+                refinement_prompt_text = refinement_prompt_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                # Convert newlines to <br/> tags to preserve formatting
+                refinement_prompt_text = refinement_prompt_text.replace('\n', '<br/>')
+                refinement_prompt_para = Paragraph(refinement_prompt_text, body_style)
+                story.append(refinement_prompt_para)
+                story.append(Spacer(1, 0.1 * inch))
+            
+            if 'refinement_response_stage3' in step_data:
+                story.append(Paragraph("Stage 3 Response", heading_style))
+                refinement_response_text = json.dumps(step_data['refinement_response_stage3'], indent=2, ensure_ascii=False)
+                refinement_response_text = refinement_response_text.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                refinement_response_para = Paragraph(refinement_response_text, body_style)
+                story.append(refinement_response_para)
+                story.append(Spacer(1, 0.1 * inch))
+            
+            if 'screenshot_grid_stage3' in step_data:
+                self._add_image_to_pdf(story, step_data['screenshot_grid_stage3'], "Stage 3: Cropped Cell with 3x3 Grid", heading_style)
         
         # Add final screenshot if exists (shows result after click)
         if 'final_screenshot' in step_data:
